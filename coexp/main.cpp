@@ -4,9 +4,45 @@
 #include<fstream>
 #include "chrono"
 #include "cstdlib"
-
+#include "vector"
 namespace fs = std::filesystem;
+#define max_buf 
+static inline void process_source_content(std::ifstream& file) {
+    std::string line;
+    std::size_t line_count = 0;
+    std::size_t blank_line = 0;
+    std::size_t preprocessor_count = 0;
+    std::size_t include_count = 0;
+    std::size_t define_count = 0;
+    while (std::getline(file, line)) {
+        line_count++;
+        std::size_t first = line.find_first_not_of(" \t\r\n");
 
+        if (first == std::string::npos) {
+            blank_line++;
+            continue;
+        }
+
+        if (line[first] == '#') {
+            preprocessor_count++;
+            std::string directive = line.substr(first);
+
+            if (directive.starts_with("#include")) {
+                include_count++;
+            }
+
+            if (directive.starts_with("#define")) {
+                define_count++;
+            }
+        }
+    }
+    std::cout << "\nSource Content Analysis:\n";
+    std::cout << "\tTotal lines: " << line_count << "\n";
+    std::cout << "\tblank lines: " << blank_line << "\n";
+    std::cout << "\tpreprocessor directives: " << preprocessor_count << "\n";
+    std::cout << "\tInclude directives: " << include_count << "\n";
+    std::cout << "\tdefine directives: " << define_count << "\n";
+}
 static inline void process_metadata(const fs::path& source){
   std::string filename = source.filename().string();
   fs::path abspath = fs::absolute(source);
@@ -75,6 +111,7 @@ int main (int argc, char *argv[]) {
     }
 
     process_metadata(source);
+    process_source_content(file);
 
     if (extension == ".c") {
       std::cout<<"\nc source file\n";
