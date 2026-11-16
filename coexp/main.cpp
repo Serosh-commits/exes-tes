@@ -5,6 +5,8 @@
 #include "chrono"
 #include "cstdlib"
 #include "vector"
+#include<sstream>
+
 namespace fs = std::filesystem;
 #define max_buf 
 static inline void process_source_content(std::ifstream& file) {
@@ -73,6 +75,45 @@ static inline void process_metadata(const fs::path& source){
           << last_modification_time.time_since_epoch().count() << "\n";
   std::cout<<"\t permissions: "<<static_cast<unsigned>(permissions)<<"\n";
 }
+
+static bool  is_compiler_available(const std::string& compiler){
+    
+    const char* path_env = std::getenv("PATH");
+
+    if(path_env == nullptr){
+        return false;
+    }
+
+    std::stringstream paths(path_env);
+    std::string directory;
+
+    while(std::getline(paths, directory, ':')){
+        if(directory.empty()){
+            directory = ".";
+        }
+
+        fs::path executable = fs::path(directory) / compiler;
+       
+        if(fs::exists(executable) && fs::is_regular_file(executable)){
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static void detect_compiler(){
+    bool gcc_available = is_compiler_available("gcc");
+    bool clang_available = is_compiler_available("clang");
+    std::cout<<"compilers available:\n";
+    std::cout << "\tGCC: "
+              << (gcc_available ? "Available" : "Unavailable")
+              << "\n";
+
+    std::cout << "\tClang: "
+              << (clang_available ? "Available" : "Unavailable")
+              << "\n";
+}
 int main (int argc, char *argv[]) {
   
   if (argc != 2) {
@@ -109,7 +150,8 @@ int main (int argc, char *argv[]) {
       std::cerr<<"failed to open the file\n";
       return EXIT_FAILURE;
     }
-
+    
+    detect_compiler();
     process_metadata(source);
     process_source_content(file);
 
