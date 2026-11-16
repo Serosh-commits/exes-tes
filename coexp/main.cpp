@@ -6,6 +6,9 @@
 #include "cstdlib"
 #include "vector"
 #include<sstream>
+#include<unistd.h>
+#include<sys/wait.h>
+#include<unistd.h>
 
 namespace fs = std::filesystem;
 #define max_buf 
@@ -102,17 +105,68 @@ static bool  is_compiler_available(const std::string& compiler){
     return false;
 }
 
+static void get_version(const std::string& comp){
+    
+    pid_t pid = fork();
+    
+    if(pid < 0){
+        std::cerr<<"failed to create the child process\n";
+        return;
+    }
+
+    if(pid == 0){
+        std::string compiler = comp;
+        char version_arg[] = "--version";
+        
+        char *args[] = {
+            compiler.data(),
+            version_arg,
+            nullptr
+        };
+
+        execvp(args[0], args);
+        std::cerr<<"failed to execute :"<<args[0]<<"\n";
+        _exit(127);
+    }
+    
+
+    int status = 0;
+    if(waitpid(pid, &status, 0) == -1){
+        std::cerr<<"waitpid failed\n";
+        return;
+    }
+
+    if(WIFEXITED(status)){
+        int exit_code = WEXITSTATUS(status);
+
+        if(exit_code == 0){
+            
+        } else {
+            std::cout<<comp<<"failed with exit code: "<<exit_code<<"\n";
+        }
+    } else if(WIFSIGNALED(status)){
+        std::cout<<comp<<"terminated by signal: "
+                        << WTERMSIG(status)<<"\n";
+    }
+}
 static void detect_compiler(){
     bool gcc_available = is_compiler_available("gcc");
     bool clang_available = is_compiler_available("clang");
+    
     std::cout<<"compilers available:\n";
-    std::cout << "\tGCC: "
-              << (gcc_available ? "Available" : "Unavailable")
-              << "\n";
+    if(gcc_available){
+        std::cout<<"\tGCC :\n";
+        get_version("gcc");
+    } else {
+        std::cout<<"\t GCC unvailaible\n";
+    }
 
-    std::cout << "\tClang: "
-              << (clang_available ? "Available" : "Unavailable")
-              << "\n";
+    if(clang_available){
+        std::cout<<"\tClang :\n";
+        get_version("clang");
+    } else {
+        std::cout<<"\tClang not presant\n";
+    }
 }
 int main (int argc, char *argv[]) {
   
