@@ -9,7 +9,7 @@
 #include<unistd.h>
 #include<sys/wait.h>
 #include<unistd.h>
-
+#include<cerrno>
 namespace fs = std::filesystem;
 #define max_buf 
 static inline void process_source_content(std::ifstream& file) {
@@ -105,16 +105,33 @@ static bool  is_compiler_available(const std::string& compiler){
     return false;
 }
 
-static void get_version(const std::string& comp){
+static inline bool get_version(const std::string& comp, std::string& output){
     
+    int pipefd[2];
+
+    if (pipe(pipefd) == -1) {
+      perror("pipe");
+      return false;
+    }
+
     pid_t pid = fork();
     
     if(pid < 0){
-        std::cerr<<"failed to create the child process\n";
-        return;
+        perror("pipe");
+        close(pipefd[0]);
+        close(pipefd[1]);
+        return false;
     }
 
     if(pid == 0){
+        close(pipefd[0]);
+
+        if (dup2(pipefd[1], STDOUT_FILENO) == -1) {
+          perror("dup2");
+          _exit(126);
+        }
+
+        close(pipefd[1]);
         std::string compiler = comp;
         char version_arg[] = "--version";
         
@@ -125,29 +142,47 @@ static void get_version(const std::string& comp){
         };
 
         execvp(args[0], args);
-        std::cerr<<"failed to execute :"<<args[0]<<"\n";
+        perror("execvp");
         _exit(127);
     }
     
+    close(pipefd[1]);
+    char buffer[256];
+    ssize_t bytes_read;
+    bool read_success = true;
 
+    while(true){
+      bytes_read = read(pipefd[0], buffer, sizeof(buffer));
+
+      if (bytes_read > 0) {
+        output.append(buffer, static_cast<std::size_t>(bytes_read));
+      } else if (errno == EINTR) {
+        continue;
+      } else if (bytes_read == 0) {
+        break;
+      } else {
+        perror("read");
+        read_success = false;
+        break;
+      }
+    }
+
+    close(pipefd[0]);
     int status = 0;
-    if(waitpid(pid, &status, 0) == -1){
-        std::cerr<<"waitpid failed\n";
-        return;
+    pid_t result;
+
+    do {
+        result = waitpid(pid, &status, 0);
+    } while (result == -1 && errno == EINTR);
+
+    if (result == -1) {
+        perror("waitpid");
+        return false;
     }
 
-    if(WIFEXITED(status)){
-        int exit_code = WEXITSTATUS(status);
-
-        if(exit_code == 0){
-            
-        } else {
-            std::cout<<comp<<"failed with exit code: "<<exit_code<<"\n";
-        }
-    } else if(WIFSIGNALED(status)){
-        std::cout<<comp<<"terminated by signal: "
-                        << WTERMSIG(status)<<"\n";
-    }
+    return read_success &&
+           WIFEXITED(status) &&
+           WEXITSTATUS(status) == 0;
 }
 static void detect_compiler(){
     bool gcc_available = is_compiler_available("gcc");
@@ -155,15 +190,32 @@ static void detect_compiler(){
     
     std::cout<<"compilers available:\n";
     if(gcc_available){
-        std::cout<<"\tGCC :\n";
-        get_version("gcc");
+        std::string version;
+        std::cout<<"\tGCC : available\n";
+        
+        if (get_version("gcc", version)) {
+          std::cout<<version;
+        } else {
+          std::cout<<"\tfailed tp retreive the gcc version\n";
+          if (!version.empty()) {
+            std::cout<<version;
+          }
+        }
     } else {
-        std::cout<<"\t GCC unvailaible\n";
+        std::cout<<"\t GCC unavailable\n";
     }
 
     if(clang_available){
-        std::cout<<"\tClang :\n";
-        get_version("clang");
+        std::string version;
+        std::cout<<"\tClang available:\n";
+        if (get_version("clang", version)) {
+          std::cout<<version;
+        } else {
+          std::cout<<"\t failed to retreive the clang version\n";
+          if (!version.empty()) {
+            std::cout<<version;
+          }
+        }
     } else {
         std::cout<<"\tClang not presant\n";
     }
